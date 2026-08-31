@@ -61,17 +61,22 @@ class Bullet {
 const RADII  = [0, 16, 30, 50];   // por tamaño 1, 2, 3
 const SPEEDS = [0, 85, 55, 32];   // velocidad base por tamaño
 const POINTS = [0, 100, 50, 20];  // puntos por tamaño
+const STAR_MULT      = 2.5;  // multiplicador de velocidad de estrella fugaz
+const STAR_CHANCE    = 0.25; // probabilidad de aparecer estrella fugaz
+const POINTS_STAR    = 2;    // multiplicador de puntos de estrella fugaz
 
 class Asteroid {
-  constructor(x, y, size = 3) {
+  constructor(x, y, size = 3, isShooting = false) {
     this.x    = x;
     this.y    = y;
     this.size = size;
     this.radius = RADII[size];
     this.dead = false;
+    this.isShooting = isShooting;
+    if (isShooting) this.ttl = rand(3, 5);
 
     const angle = rand(0, Math.PI * 2);
-    const speed = SPEEDS[size] + rand(-15, 15);
+    const speed = (SPEEDS[size] + rand(-15, 15)) * (isShooting ? STAR_MULT : 1);
     this.vx = Math.cos(angle) * speed;
     this.vy = Math.sin(angle) * speed;
     this.rotSpeed = rand(-1.2, 1.2);
@@ -91,6 +96,10 @@ class Asteroid {
     this.x   = wrap(this.x + this.vx * dt, W);
     this.y   = wrap(this.y + this.vy * dt, H);
     this.rot += this.rotSpeed * dt;
+    if (this.isShooting) {
+      this.ttl -= dt;
+      if (this.ttl <= 0) this.dead = true;
+    }
   }
 
   split() {
@@ -105,7 +114,12 @@ class Asteroid {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rot);
-    ctx.strokeStyle = '#8a4a3f';
+    // Parpadeo al desaparecer la estrella fugaz
+    if (this.isShooting && this.ttl < 1 && Math.floor(this.ttl * 8) % 2 === 0) {
+      ctx.restore();
+      return;
+    }
+    ctx.strokeStyle = this.isShooting ? '#c4521f' : '#8a4a3f';
     ctx.lineWidth   = 1.5;
     ctx.lineJoin    = 'round';
     ctx.beginPath();
@@ -113,7 +127,7 @@ class Asteroid {
     for (let i = 1; i < this.verts.length; i++)
       ctx.lineTo(this.verts[i][0], this.verts[i][1]);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(80, 40, 35, 0.5)';
+    ctx.fillStyle = this.isShooting ? 'rgba(120, 50, 20, 0.5)' : 'rgba(80, 40, 35, 0.5)';
     ctx.fill();
     ctx.stroke();
     ctx.restore();
@@ -302,7 +316,7 @@ class PowerUp {
 // ── Estado del juego ──────────────────────────────────────────────────────────
 const SPEED_TIME   = 5;       // duración del power-up (s)
 const SPEED_FACTOR = 2;       // multiplicador de velocidad
-const DROP_CHANCE  = 0.15;    // probabilidad de soltar power-up
+const DROP_CHANCE  = 0.10;    // probabilidad de soltar power-up
 
 let ship, bullets, asteroids, particles, powerUps;
 let score, lives, level;
@@ -318,7 +332,7 @@ function spawnAsteroids(count) {
       x = rand(0, W);
       y = rand(0, H);
     } while (Math.hypot(x - W / 2, y - H / 2) < SAFE_DIST);
-    asteroids.push(new Asteroid(x, y, 3));
+    asteroids.push(new Asteroid(x, y, 3, Math.random() < STAR_CHANCE));
   }
 }
 
@@ -418,7 +432,7 @@ function update(dt) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
         b.dead = true;
         a.dead = true;
-        score += POINTS[a.size];
+        score += POINTS[a.size] * (a.isShooting ? POINTS_STAR : 1);
         explode(a.x, a.y, a.size * 5);
         if (Math.random() < DROP_CHANCE) powerUps.push(new PowerUp(a.x, a.y, 'speed'));
         newAsteroids.push(...a.split());
