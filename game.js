@@ -181,7 +181,16 @@ class Ship {
     const NOSE = 21;
     const ox = this.x + Math.cos(this.angle) * NOSE;
     const oy = this.y + Math.sin(this.angle) * NOSE;
-    return [new Bullet(ox, oy, this.angle)];
+    const out = [new Bullet(ox, oy, this.angle)];
+
+    // Triple disparo: dos balas paralelas a ambos lados del disparo normal
+    if (tripleTimer > 0) {
+      const px = -Math.sin(this.angle) * TRIPLE_SPREAD;
+      const py =  Math.cos(this.angle) * TRIPLE_SPREAD;
+      out.push(new Bullet(ox + px, oy + py, this.angle));
+      out.push(new Bullet(ox - px, oy - py, this.angle));
+    }
+    return out;
   }
 
   draw() {
@@ -221,6 +230,17 @@ class Ship {
       ctx.beginPath();
       ctx.moveTo(-12, 0);
       ctx.lineTo(-12 - rand(6, 12), 0);
+      ctx.stroke();
+    }
+    // Marcas laterales del power-up de triple disparo
+    if (tripleTimer > 0) {
+      ctx.strokeStyle = 'rgba(0, 255, 200, 0.7)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo( 6, -10);
+      ctx.lineTo(14, -10);
+      ctx.moveTo( 6,  10);
+      ctx.lineTo(14,  10);
       ctx.stroke();
     }
 
@@ -287,8 +307,8 @@ class PowerUp {
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rot);
 
-    // Diamante amarillo
-    ctx.fillStyle = '#ff0';
+    // Diamante: amarillo = velocidad, cian = triple disparo
+    ctx.fillStyle = this.type === 'triple' ? '#0ff' : '#ff0';
     ctx.beginPath();
     ctx.moveTo(0, -this.radius);
     ctx.lineTo(this.radius * 0.6, 0);
@@ -298,7 +318,7 @@ class PowerUp {
     ctx.fill();
 
     // Rayo interior
-    ctx.fillStyle = '#a80';
+    ctx.fillStyle = this.type === 'triple' ? '#066' : '#a80';
     ctx.beginPath();
     ctx.moveTo(-1, -5);
     ctx.lineTo(2, -1);
@@ -316,13 +336,16 @@ class PowerUp {
 // ── Estado del juego ──────────────────────────────────────────────────────────
 const SPEED_TIME   = 5;       // duración del power-up (s)
 const SPEED_FACTOR = 2;       // multiplicador de velocidad
+const TRIPLE_TIME  = 5;       // duración del triple disparo (s)
+const TRIPLE_SPREAD = 6;      // separación lateral de los disparos extra (px)
 const DROP_CHANCE  = 0.10;    // probabilidad de soltar power-up
 
 let ship, bullets, asteroids, particles, powerUps;
 let score, lives, level;
 let state;      // 'playing' | 'dead' | 'gameover'
 let deadTimer;
-let speedTimer; // tiempo restante de velocidad (0 = inactivo)
+let speedTimer;  // tiempo restante de velocidad (0 = inactivo)
+let tripleTimer; // tiempo restante de triple disparo (0 = inactivo)
 
 function spawnAsteroids(count) {
   const SAFE_DIST = 130;
@@ -341,8 +364,9 @@ function initGame() {
   bullets   = [];
   asteroids = [];
   particles = [];
-  powerUps  = [];
+  powerUps = [];
   speedTimer = 0;
+  tripleTimer = 0;
   score  = 0;
   lives  = 3;
   level  = 1;
@@ -356,6 +380,7 @@ function nextLevel() {
   particles = [];
   powerUps  = [];
   speedTimer = 0;
+  tripleTimer = 0;
   ship.reset();
   spawnAsteroids(3 + level);
 }
@@ -368,6 +393,7 @@ function killShip() {
   explode(ship.x, ship.y, 14);
   ship.dead = true;
   speedTimer = 0;
+  tripleTimer = 0;
   lives--;
   if (lives <= 0) {
     state = 'gameover';
@@ -400,9 +426,10 @@ function update(dt) {
     bullets.push(...ship.tryShoot());
   }
 
-  // Temporizador de velocidad
-  const speedMul = speedTimer > 0 ? SPEED_FACTOR : 1;
-  if (speedTimer > 0) speedTimer -= dt;
+  // Temporizadores de power-ups
+  const speedMul  = speedTimer  > 0 ? SPEED_FACTOR : 1;
+  if (speedTimer  > 0) speedTimer  -= dt;
+  if (tripleTimer > 0) tripleTimer -= dt;
 
   ship.update(dt, speedMul);
   bullets.forEach(b => b.update(dt));
@@ -420,6 +447,9 @@ function update(dt) {
       if (p.type === 'speed') {
         speedTimer = SPEED_TIME;
         explode(ship.x, ship.y, 6);
+      } else if (p.type === 'triple') {
+        tripleTimer = TRIPLE_TIME;
+        explode(ship.x, ship.y, 6);
       }
     }
   }
@@ -434,7 +464,8 @@ function update(dt) {
         a.dead = true;
         score += POINTS[a.size] * (a.isShooting ? POINTS_STAR : 1);
         explode(a.x, a.y, a.size * 5);
-        if (Math.random() < DROP_CHANCE) powerUps.push(new PowerUp(a.x, a.y, 'speed'));
+        if (Math.random() < DROP_CHANCE)
+          powerUps.push(new PowerUp(a.x, a.y, Math.random() < 0.5 ? 'speed' : 'triple'));
         newAsteroids.push(...a.split());
       }
     }
@@ -487,6 +518,12 @@ function drawHUD() {
   if (speedTimer > 0) {
     ctx.fillStyle = '#ff0';
     ctx.fillText(`VELOCIDAD ${Math.ceil(speedTimer)}s`, W / 2, 46);
+    ctx.fillStyle = '#7fc4ff';
+  }
+
+  if (tripleTimer > 0) {
+    ctx.fillStyle = '#0ff';
+    ctx.fillText(`TRIPLE ${Math.ceil(tripleTimer)}s`, W / 2, 66);
     ctx.fillStyle = '#7fc4ff';
   }
 
